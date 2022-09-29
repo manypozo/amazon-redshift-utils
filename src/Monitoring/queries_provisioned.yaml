@@ -1,0 +1,105 @@
+version: 0
+
+queries:
+
+  - name: ColumnsNotCompressed
+    description: Measure the number of columns not compressed
+    type: Query
+    unit: Count
+    query: |
+      SELECT count(a.attname)
+      FROM pg_namespace n,
+        pg_class c,
+        pg_attribute a
+      WHERE n.oid = c.relnamespace
+        AND c.oid = a.attrelid
+        AND a.attnum > 0
+        AND NOT a.attisdropped
+        and n.nspname NOT IN ('information_schema', 'pg_catalog', 'pg_toast')
+        AND format_encoding(a.attencodingtype:: integer) = 'none'
+        AND c.relkind = 'r'
+        AND a.attsortkeyord != 1
+
+  - query: |
+      SELECT sum(nvl(s.num_qs, 0)) FROM svv_table_info t LEFT JOIN (SELECT tbl, COUNT(distinct query) num_qs FROM stl_scan s WHERE s.userid > 1 AND starttime >= GETDATE() - INTERVAL '1 hour' GROUP BY tbl) s ON s.tbl = t.table_id WHERE t.sortkey1 IS NULL
+    name: QueriesScanNoSort
+    unit: Count
+    type: Query
+
+  - query: | 
+      SELECT SUM(w.total_queue_time) / 1000000.0 FROM stl_wlm_query w WHERE w.queue_start_time >= GETDATE() - INTERVAL '1 hour' AND w.total_queue_time > 0
+    name: TotalWLMQueueTime
+    unit: Seconds
+    type: Query
+
+  - query: |
+      SELECT count(distinct query) FROM svl_query_report WHERE is_diskbased='t' AND (LABEL LIKE 'hash%%' OR LABEL LIKE 'sort%%' OR LABEL LIKE 'aggr%%') AND userid > 1 AND start_time >= GETDATE() - INTERVAL '1 hour'
+    name: DiskBasedQueries
+    unit: Count
+    type: Query
+
+  - query: |
+      select avg(datediff(ms, startqueue, startwork)) from stl_commit_stats  where startqueue >= GETDATE() - INTERVAL '1 hour'
+    name: AvgCommitQueueTime
+    unit: Milliseconds
+    type: Query
+
+  - query: |
+      select count(distinct l.query) from stl_alert_event_log as l where l.userid >1 and l.event_time >= GETDATE() - INTERVAL '1 hour'
+    name: TotalAlerts
+    unit: Seconds
+    type: Query
+
+  - query: |
+      select avg(datediff(ms, starttime, endtime)) from stl_query where starttime >= GETDATE() - INTERVAL '1 hour'
+    name: AverageQueryTime
+    unit: Milliseconds
+    type: Query
+
+  - query: | 
+      select sum(packets) from stl_dist where starttime >= GETDATE() - INTERVAL '1 hour'
+    name: Packets
+    unit: Count
+    type: Query
+
+  - query: |
+      select sum(total) from (select count(query) total from stl_dist where starttime >= GETDATE() - INTERVAL '1 hour' group by query having sum(packets) > 1000000)
+    name: QueriesWithHighTraffic
+    unit: Count
+    type: Query
+
+  - query: |
+      select count(event) from stl_connection_log where event = 'initiating session' and username != 'rdsdb' and pid not in (select pid from stl_connection_log where event = 'disconnecting session')
+    name: DbConnections
+    unit: Count
+    type: Query
+
+  - query: |
+      select count(*) from svv_transactions t WHERE t.lockable_object_type = 'transactionid' and pid != pg_backend_pid()
+    name: OpenTransactions
+    unit: Count
+    type: Query
+
+  - query: | 
+      select count(*) from svv_transactions t WHERE t.granted = 'f' and t.pid != pg_backend_pid()
+    name: UngrantedLocks
+    unit: Count
+    type: Query
+
+  - query: |
+      select case when count(*) > 0 then 1 else 0 end from svv_transactions where xid = (select max(xid) from stl_vacuum)
+    name: VacuumRunning
+    unit: Count
+    type: Query
+
+  - query: |
+      select case when total_query_slots > 15 then 1 else 0 end status from (select sum(num_query_tasks) total_query_slots from STV_WLM_SERVICE_CLASS_CONFIG where service_class > 5 and name != 'Short query queue')
+    name: WLMQuerySlotCountWarning
+    unit: Count
+    type: Query
+
+  - query: |
+      select count(distinct id) from STV_TBL_PERM where temp = 1
+    name: TemporaryTables
+    unit: Count
+    type: Query

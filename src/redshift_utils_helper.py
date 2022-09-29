@@ -1,5 +1,5 @@
-import sys
 import datetime
+import sys
 
 '''
 redshift_utils_helper.py

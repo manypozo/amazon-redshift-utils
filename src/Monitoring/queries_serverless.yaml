@@ -1,0 +1,33 @@
+version: 0
+
+queries:
+
+  - name: ColumnsNotCompressed
+    description: Measure the number of columns not compressed
+    type: Query
+    unit: Count
+    query: |
+      SELECT count(a.attname)
+      FROM pg_namespace n,
+        pg_class c,
+        pg_attribute a
+      WHERE n.oid = c.relnamespace
+        AND c.oid = a.attrelid
+        AND a.attnum > 0
+        AND NOT a.attisdropped
+        and n.nspname NOT IN ('information_schema', 'pg_catalog', 'pg_toast')
+        AND format_encoding(a.attencodingtype:: integer) = 'none'
+        AND c.relkind = 'r'
+        AND a.attsortkeyord != 1
+
+  - query: |
+      select count(*) from svv_transactions t WHERE t.lockable_object_type = 'transactionid' and pid != pg_backend_pid()
+    name: OpenTransactions
+    unit: Count
+    type: Query
+
+  - query: | 
+      select count(*) from svv_transactions t WHERE t.granted = 'f' and t.pid != pg_backend_pid()
+    name: UngrantedLocks
+    unit: Count
+    type: Query
